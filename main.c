@@ -3,9 +3,17 @@
 #include <omp.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
 static const long Num_To_Add = 1000000000;
 static const double Scale = 10.0 / RAND_MAX;
+
+// structure for message queue
+struct msg_buffer {
+    long msg_type;
+    long msg_number;
+};
 
 long add_serial(const char *numbers) {
     long sum = 0;
@@ -17,6 +25,51 @@ long add_serial(const char *numbers) {
 
 long add_parallel(const char *numbers) {
     long sum = 0;
+    long my_sum, my_first_i, my_last_i, my_i, my_x;
+    key_t key;
+    int msgid;
+    struct msg_buffer message;
+
+    /* ftok to generate unique key
+    key = ftok("progfile", 65);
+
+    // msgget creates a message queue
+    // and returns identifier
+    if ((msgid = msgget(key, 0666)) < 0) {
+        printf("Failure!");
+    }*/
+
+    #pragma omp parallel private(my_sum, my_first_i, my_last_i, my_i, my_x, message) num_threads(omp_get_max_threads()) reduction(+:sum)
+    {
+        my_sum = 0;
+        my_first_i = omp_get_thread_num() * Num_To_Add / omp_get_max_threads();
+        my_last_i = my_first_i + Num_To_Add / omp_get_max_threads();
+        for (my_i = my_first_i; my_i < my_last_i; my_i++) {
+            my_x = numbers[my_i];
+            my_sum += my_x;
+        }
+
+        sum += my_sum;
+
+        //printf("Sum for Thread %i: %i\n", omp_get_thread_num(), my_sum);
+        message.msg_type = 1;
+
+        /*if (omp_get_thread_num() == 0)
+        {
+            sum = my_sum;
+            for (my_i = 1; my_i < omp_get_max_threads(); my_i++) {
+                msgrcv(msgid, &message, sizeof(message), 1, 0);
+                sum += message.msg_number;
+            }
+            msgctl(msgid, IPC_RMID, NULL);
+        }
+        else
+        {
+            message.msg_number = my_sum;
+            // msgsnd to send message
+            msgsnd(msgid, &message, sizeof(message), 0);
+        }*/
+    };
 
     return sum;
 }
@@ -25,7 +78,7 @@ int main() {
     char *numbers = malloc(sizeof(long) * Num_To_Add);
 
     long chunk_size = Num_To_Add / omp_get_max_threads();
-#pragma omp parallel num_threads(omp_get_max_threads())
+    #pragma omp parallel num_threads(omp_get_max_threads())
     {
         int p = omp_get_thread_num();
         unsigned int seed = (unsigned int) time(NULL) + (unsigned int) p;
