@@ -25,11 +25,13 @@ long add_serial(const char *numbers) {
 
 long add_parallel(const char *numbers) {
     long sum = 0;
-    long sum_array_1[4] = {0, 0, 0, 0};
-    long sum_array_2[2] = {0, 0};
-    long my_sum, my_first_i, my_last_i, my_i, my_x;
+    long sum_array_1[2] = {0, 0};
+    long sum_2 = 0;
+    long my_sum, my_first_i, my_last_i, my_i;
     key_t key;
     int msgid;
+    int thread_num;
+    int number_of_threads = omp_get_max_threads();
     struct msg_buffer message;
 
     /* ftok to generate unique key
@@ -41,25 +43,46 @@ long add_parallel(const char *numbers) {
         printf("Failure!");
     }*/
 
-    #pragma omp parallel private(my_sum, my_first_i, my_last_i, my_i, my_x, message) num_threads(omp_get_max_threads()) //reduction(+:sum)
+    #pragma omp parallel private(my_sum, my_first_i, my_last_i, my_i, message, thread_num) num_threads(number_of_threads) reduction(+:sum)
     {
+        thread_num = omp_get_thread_num();
         my_sum = 0;
-        my_first_i = omp_get_thread_num() * Num_To_Add / omp_get_max_threads();
-        my_last_i = my_first_i + Num_To_Add / omp_get_max_threads();
+        my_first_i = omp_get_thread_num() * Num_To_Add / number_of_threads;
+        my_last_i = my_first_i + Num_To_Add / number_of_threads;
         for (my_i = my_first_i; my_i < my_last_i; my_i++) {
-            my_x = numbers[my_i];
-            my_sum += my_x;
+            my_sum += numbers[my_i];
         }
 
         //printf("Sum for Thread %i: %i\n", omp_get_thread_num(), my_sum);
-        message.msg_type = 1;
-        if (omp_get_thread_num() == 0 || omp_get_thread_num() == 2)
-            sum_array_1[omp_get_thread_num()] = my_sum;
-        else
+        //message.msg_type = 1;
+
+        if (thread_num == 0)
         {
-            while (sum_array_1[0] == 0 || sum_array_1[2] == 0);
-            sum_array_2[(omp_get_thread_num() - 1) / 2] = my_sum + sum_array_1[omp_get_thread_num() - 1];
+            while (sum_array_1[0] == 0);
+            my_sum = my_sum + sum_array_1[0];
+            while (sum_2 == 0);
+            sum = my_sum + sum_2;
         }
+        else if (thread_num == 1)
+        {
+            sum_array_1[0] = my_sum;
+        }
+        else if (thread_num == 2)
+        {
+            while (sum_array_1[1] == 0);
+            sum_2 = my_sum + sum_array_1[1];
+        }
+        else if (thread_num == 3)
+        {
+            sum_array_1[1] = my_sum;
+        }
+
+        /*if (omp_get_thread_num() == 0)
+        {
+            while (sum_array_2[0] == 0 || sum_array_2[1] == 0);
+            sum = sum_array_2[0] + sum_array_2[1];
+        }*/
+
         /*if (omp_get_thread_num() == 0){
             while (sum_array_2[0] == 0 || sum_array_2[1] == 0);
             sum = sum_array_2[0] + sum_array_2[1];
@@ -92,7 +115,7 @@ long add_parallel(const char *numbers) {
         }*/
     };
 
-    return sum_array_2[0] + sum_array_2[1];
+    return sum;
 }
 
 int main() {
