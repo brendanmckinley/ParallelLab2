@@ -4,16 +4,9 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/ipc.h>
-#include <sys/msg.h>
 
 static const long Num_To_Add = 1000000000;
 static const double Scale = 10.0 / RAND_MAX;
-
-// structure for message queue
-struct msg_buffer {
-    long msg_type;
-    long msg_number;
-};
 
 long add_serial(const char *numbers) {
     long sum = 0;
@@ -24,26 +17,14 @@ long add_serial(const char *numbers) {
 }
 
 long add_parallel(const char *numbers) {
-    long sum = 0;
-    long sum_array_1[2] = {0, 0};
-    long sum_2 = 0;
-    long my_sum, my_first_i, my_last_i, my_i;
-    key_t key;
-    int msgid;
+    long sum = 0; // final sum value
+    long sum_array[3] = {0, 0, 0}; // holds intermediary sum values
+
+    long my_sum, my_first_i, my_last_i, my_i; //private variables for computing sums in individual threads
     int thread_num;
     int number_of_threads = omp_get_max_threads();
-    struct msg_buffer message;
 
-    /* ftok to generate unique key
-    key = ftok("progfile", 65);
-
-    // msgget creates a message queue
-    // and returns identifier
-    if ((msgid = msgget(key, 0666)) < 0) {
-        printf("Failure!");
-    }*/
-
-    #pragma omp parallel private(my_sum, my_first_i, my_last_i, my_i, message, thread_num) num_threads(number_of_threads) reduction(+:sum)
+    #pragma omp parallel private(my_sum, my_first_i, my_last_i, my_i, thread_num) num_threads(number_of_threads) reduction(+:sum)
     {
         thread_num = omp_get_thread_num();
         my_sum = 0;
@@ -53,66 +34,26 @@ long add_parallel(const char *numbers) {
             my_sum += numbers[my_i];
         }
 
-        //printf("Sum for Thread %i: %i\n", omp_get_thread_num(), my_sum);
-        //message.msg_type = 1;
-
         if (thread_num == 0)
         {
-            while (sum_array_1[0] == 0);
-            my_sum = my_sum + sum_array_1[0];
-            while (sum_2 == 0);
-            sum = my_sum + sum_2;
+            while (sum_array[0] == 0); // spin until thread 1 is finished adding its sum to the array
+            my_sum = my_sum + sum_array[0]; // add thread 1's value
+            while (sum_array[2] == 0); // spin until thread 2 has finished adding the sum of its value and thread 3's value to the array
+            sum = my_sum + sum_array[2]; // compute final sum
         }
         else if (thread_num == 1)
         {
-            sum_array_1[0] = my_sum;
+            sum_array[0] = my_sum; // add value to array
         }
         else if (thread_num == 2)
         {
-            while (sum_array_1[1] == 0);
-            sum_2 = my_sum + sum_array_1[1];
+            while (sum_array[1] == 0); // spin until thread 3 is finished adding its sum to the array
+            sum_array[2] = my_sum + sum_array[1]; // add value and value from thread 3 and add to array
         }
         else if (thread_num == 3)
         {
-            sum_array_1[1] = my_sum;
+            sum_array[1] = my_sum; // add value to array
         }
-
-        /*if (omp_get_thread_num() == 0)
-        {
-            while (sum_array_2[0] == 0 || sum_array_2[1] == 0);
-            sum = sum_array_2[0] + sum_array_2[1];
-        }*/
-
-        /*if (omp_get_thread_num() == 0){
-            while (sum_array_2[0] == 0 || sum_array_2[1] == 0);
-            sum = sum_array_2[0] + sum_array_2[1];
-        }*/
-
-        /*if (omp_get_thread_num() == 0)
-        {
-            while (sum_array[1] == 0 || sum_array[2] == 0 || sum_array[3] == 0);
-            sum = my_sum + sum_array[1] + sum_array[2] + sum_array[3];
-        }
-        else
-        {
-            sum_array[omp_get_thread_num()] = my_sum;
-        }
-
-        /*if (omp_get_thread_num() == 0)
-        {
-            sum = my_sum;
-            for (my_i = 1; my_i < omp_get_max_threads(); my_i++) {
-                msgrcv(msgid, &message, sizeof(message), 1, 0);
-                sum += message.msg_number;
-            }
-            msgctl(msgid, IPC_RMID, NULL);
-        }
-        else
-        {
-            message.msg_number = my_sum;
-            // msgsnd to send message
-            msgsnd(msgid, &message, sizeof(message), 0);
-        }*/
     };
 
     return sum;
