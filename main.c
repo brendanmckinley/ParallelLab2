@@ -11,7 +11,7 @@ static const double Scale = 10.0 / RAND_MAX;
 long add_serial(const char *numbers) {
     long sum = 0;
     for (long i = 0; i < Num_To_Add; i++) {
-        sum += numbers[i];
+        sum += numbers[i]; // calculate sum sequentially
     }
     return sum;
 }
@@ -28,10 +28,10 @@ long add_parallel(const char *numbers) {
     {
         thread_num = omp_get_thread_num();
         my_sum = 0;
-        my_first_i = omp_get_thread_num() * Num_To_Add / number_of_threads;
-        my_last_i = my_first_i + Num_To_Add / number_of_threads;
+        my_first_i = omp_get_thread_num() * Num_To_Add / number_of_threads; // start at appropriate location in array
+        my_last_i = my_first_i + Num_To_Add / number_of_threads; // end at appropriate location in array
         for (my_i = my_first_i; my_i < my_last_i; my_i++) {
-            my_sum += numbers[my_i];
+            my_sum += numbers[my_i]; // compute sum for subsection of array
         }
 
         if (thread_num == 0)
